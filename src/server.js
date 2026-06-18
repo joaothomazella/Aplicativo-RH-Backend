@@ -1,10 +1,12 @@
 require("dotenv").config();
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const pool = require("./db/pool");
 const vagasRoutes = require("./routes/vagas.routes");
-const candidaturasRoutes = require("./routes/candidaturas.routes");
+const { router: candidaturasRoutes } = require("./routes/candidaturas.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const publicRoutes = require("./routes/public.routes");
 
 const app = express();
 
@@ -27,6 +29,8 @@ app.get("/api/rh/db-health", async (req, res, next) => {
 app.use("/api/rh/vagas", vagasRoutes);
 app.use("/api/rh/candidaturas", candidaturasRoutes);
 app.use("/api/rh/dashboard", dashboardRoutes);
+app.use("/api/rh/public", publicRoutes);
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
 app.use((req, res) => {
   res.status(404).json({ error: "Rota não encontrada" });
@@ -34,7 +38,9 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ error: err.message || "Erro interno do servidor" });
+  const isMulterError = err.name === "MulterError";
+  const status = err.status || (isMulterError ? 400 : 500);
+  res.status(status).json({ error: err.message || "Erro interno do servidor" });
 });
 
 const PORT = process.env.PORT || 3001;

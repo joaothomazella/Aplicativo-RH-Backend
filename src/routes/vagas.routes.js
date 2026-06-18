@@ -23,6 +23,15 @@ async function uniqueSlug(titulo, ignoreId) {
 
 router.get("/", async (req, res, next) => {
   try {
+    const publico = req.query.publico === "1" || req.query.publico === "true";
+
+    if (publico) {
+      const [rows] = await pool.query(
+        "SELECT * FROM rh_vagas WHERE status = 'aberta' AND publicada_site = 1 ORDER BY ordem ASC, created_at DESC"
+      );
+      return res.json(rows);
+    }
+
     const [rows] = await pool.query("SELECT * FROM rh_vagas ORDER BY created_at DESC");
     res.json(rows);
   } catch (err) {
@@ -52,7 +61,21 @@ router.get("/slug/:slug", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { titulo, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status } = req.body;
+    const {
+      titulo,
+      descricao,
+      requisitos,
+      beneficios,
+      setor,
+      tipo_contrato,
+      localizacao,
+      modalidade,
+      nivel,
+      salario,
+      publicada_site,
+      ordem,
+      status,
+    } = req.body;
 
     if (!titulo) return res.status(400).json({ error: "Campo 'titulo' é obrigatório" });
 
@@ -60,8 +83,9 @@ router.post("/", async (req, res, next) => {
 
     const [result] = await pool.query(
       `INSERT INTO rh_vagas
-        (titulo, slug, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (titulo, slug, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao,
+         modalidade, nivel, salario, publicada_site, ordem, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         titulo,
         slug,
@@ -71,6 +95,11 @@ router.post("/", async (req, res, next) => {
         setor || null,
         tipo_contrato || null,
         localizacao || null,
+        modalidade || null,
+        nivel || null,
+        salario || null,
+        publicada_site != null ? Number(Boolean(publicada_site)) : 0,
+        ordem != null ? Number(ordem) : 0,
         status || "aberta",
       ]
     );
@@ -97,6 +126,11 @@ router.put("/:id", async (req, res, next) => {
       setor = existing.setor,
       tipo_contrato = existing.tipo_contrato,
       localizacao = existing.localizacao,
+      modalidade = existing.modalidade,
+      nivel = existing.nivel,
+      salario = existing.salario,
+      publicada_site = existing.publicada_site,
+      ordem = existing.ordem,
       status = existing.status,
     } = req.body;
 
@@ -105,9 +139,26 @@ router.put("/:id", async (req, res, next) => {
     await pool.query(
       `UPDATE rh_vagas SET
         titulo = ?, slug = ?, descricao = ?, requisitos = ?, beneficios = ?,
-        setor = ?, tipo_contrato = ?, localizacao = ?, status = ?
+        setor = ?, tipo_contrato = ?, localizacao = ?, modalidade = ?, nivel = ?,
+        salario = ?, publicada_site = ?, ordem = ?, status = ?
        WHERE id = ?`,
-      [titulo, slug, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status, id]
+      [
+        titulo,
+        slug,
+        descricao,
+        requisitos,
+        beneficios,
+        setor,
+        tipo_contrato,
+        localizacao,
+        modalidade,
+        nivel,
+        salario,
+        Number(Boolean(publicada_site)),
+        Number(ordem) || 0,
+        status,
+        id,
+      ]
     );
 
     const [rows] = await pool.query("SELECT * FROM rh_vagas WHERE id = ?", [id]);

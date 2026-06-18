@@ -12,6 +12,11 @@
 --   setor VARCHAR(100)
 --   tipo_contrato VARCHAR(80)
 --   localizacao VARCHAR(120)
+--   modalidade VARCHAR(50)               -- ex: presencial, hibrido, remoto
+--   nivel VARCHAR(50)                    -- ex: junior, pleno, senior
+--   salario VARCHAR(80)                  -- texto livre (faixa salarial ou "A combinar")
+--   publicada_site TINYINT(1) DEFAULT 0  -- 1 = visível no site público da Induscolor
+--   ordem INT DEFAULT 0                  -- ordem de exibição no site público
 --   status ENUM('aberta','pausada','fechada') DEFAULT 'aberta'
 --   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 --   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -21,7 +26,25 @@
 --   nome VARCHAR(150) NOT NULL
 --   email VARCHAR(150)
 --   telefone VARCHAR(50)
+--   whatsapp VARCHAR(50)
+--   data_nascimento DATE
+--   cpf VARCHAR(20)
+--   rg VARCHAR(20)
+--   cep VARCHAR(15)
+--   endereco VARCHAR(255)
+--   bairro VARCHAR(120)
 --   cidade VARCHAR(100)
+--   estado VARCHAR(2)
+--   estado_civil VARCHAR(40)
+--   cargo_anterior VARCHAR(150)
+--   empresa_anterior VARCHAR(150)
+--   tempo_experiencia VARCHAR(80)
+--   escolaridade VARCHAR(100)
+--   cursos MEDIUMTEXT
+--   cnh VARCHAR(20)
+--   disponibilidade_horario VARCHAR(120)
+--   disponibilidade_inicio VARCHAR(80)
+--   resumo_profissional MEDIUMTEXT
 --   linkedin VARCHAR(255)
 --   curriculo_url MEDIUMTEXT
 --   observacoes MEDIUMTEXT
@@ -32,9 +55,11 @@
 --   id INT PK AUTO_INCREMENT
 --   candidato_id INT NOT NULL (FK -> rh_candidatos.id)
 --   vaga_id INT NULL (FK -> rh_vagas.id; NULL = banco de talentos)
+--   vaga_desejada VARCHAR(150)            -- texto livre, usado no banco de talentos sem vaga_id
 --   origem VARCHAR(80) DEFAULT 'site_induscolor'
 --   etapa ENUM('novo_curriculo','triagem','entrevista','teste','aprovado','reprovado','banco_talentos') DEFAULT 'novo_curriculo'
 --   status VARCHAR(80) DEFAULT 'em_analise'
+--   motivo_reprovacao VARCHAR(255)
 --   avaliacao_rh MEDIUMTEXT
 --   pretensao_salarial DECIMAL(10,2)
 --   disponibilidade VARCHAR(120)
