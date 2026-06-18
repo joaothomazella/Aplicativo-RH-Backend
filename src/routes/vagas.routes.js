@@ -23,7 +23,7 @@ async function uniqueSlug(titulo, ignoreId) {
 
 router.get("/", async (req, res, next) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM rh_vagas ORDER BY criado_em DESC");
+    const [rows] = await pool.query("SELECT * FROM rh_vagas ORDER BY created_at DESC");
     res.json(rows);
   } catch (err) {
     next(err);
@@ -52,19 +52,7 @@ router.get("/slug/:slug", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const {
-      titulo,
-      area,
-      descricao,
-      requisitos,
-      diferenciais,
-      beneficios,
-      localizacao,
-      horario,
-      tipo_contratacao,
-      status,
-      data_encerramento,
-    } = req.body;
+    const { titulo, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status } = req.body;
 
     if (!titulo) return res.status(400).json({ error: "Campo 'titulo' é obrigatório" });
 
@@ -72,21 +60,18 @@ router.post("/", async (req, res, next) => {
 
     const [result] = await pool.query(
       `INSERT INTO rh_vagas
-        (titulo, slug, area, descricao, requisitos, diferenciais, beneficios, localizacao, horario, tipo_contratacao, status, data_encerramento)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (titulo, slug, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         titulo,
         slug,
-        area || null,
         descricao || null,
         requisitos || null,
-        diferenciais || null,
         beneficios || null,
+        setor || null,
+        tipo_contrato || null,
         localizacao || null,
-        horario || null,
-        tipo_contratacao || null,
-        status || "publicada",
-        data_encerramento || null,
+        status || "aberta",
       ]
     );
 
@@ -106,40 +91,23 @@ router.put("/:id", async (req, res, next) => {
 
     const {
       titulo = existing.titulo,
-      area = existing.area,
       descricao = existing.descricao,
       requisitos = existing.requisitos,
-      diferenciais = existing.diferenciais,
       beneficios = existing.beneficios,
+      setor = existing.setor,
+      tipo_contrato = existing.tipo_contrato,
       localizacao = existing.localizacao,
-      horario = existing.horario,
-      tipo_contratacao = existing.tipo_contratacao,
       status = existing.status,
-      data_encerramento = existing.data_encerramento,
     } = req.body;
 
     const slug = titulo !== existing.titulo ? await uniqueSlug(titulo, id) : existing.slug;
 
     await pool.query(
       `UPDATE rh_vagas SET
-        titulo = ?, slug = ?, area = ?, descricao = ?, requisitos = ?, diferenciais = ?,
-        beneficios = ?, localizacao = ?, horario = ?, tipo_contratacao = ?, status = ?, data_encerramento = ?
+        titulo = ?, slug = ?, descricao = ?, requisitos = ?, beneficios = ?,
+        setor = ?, tipo_contrato = ?, localizacao = ?, status = ?
        WHERE id = ?`,
-      [
-        titulo,
-        slug,
-        area,
-        descricao,
-        requisitos,
-        diferenciais,
-        beneficios,
-        localizacao,
-        horario,
-        tipo_contratacao,
-        status,
-        data_encerramento,
-        id,
-      ]
+      [titulo, slug, descricao, requisitos, beneficios, setor, tipo_contrato, localizacao, status, id]
     );
 
     const [rows] = await pool.query("SELECT * FROM rh_vagas WHERE id = ?", [id]);

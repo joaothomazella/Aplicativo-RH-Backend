@@ -7,22 +7,24 @@ const LIST_QUERY = `
   SELECT
     ca.id AS candidatura_id,
     ca.etapa,
-    ca.mensagem,
-    ca.criado_em AS candidatura_criada_em,
-    ca.atualizado_em AS candidatura_atualizada_em,
+    ca.status,
+    ca.origem,
+    ca.avaliacao_rh,
+    ca.pretensao_salarial,
+    ca.disponibilidade,
+    ca.observacoes AS candidatura_observacoes,
+    ca.created_at AS candidatura_created_at,
+    ca.updated_at AS candidatura_updated_at,
     ca.vaga_id,
     v.titulo AS vaga_titulo,
     c.id AS candidato_id,
     c.nome,
     c.email,
     c.telefone,
-    c.whatsapp,
     c.cidade,
-    c.estado,
-    c.escolaridade,
-    c.experiencia,
-    c.pretensao_salarial,
-    c.curriculo_url
+    c.linkedin,
+    c.curriculo_url,
+    c.observacoes AS candidato_observacoes
   FROM rh_candidaturas ca
   JOIN rh_candidatos c ON c.id = ca.candidato_id
   LEFT JOIN rh_vagas v ON v.id = ca.vaga_id
@@ -44,7 +46,7 @@ router.get("/", async (req, res, next) => {
     }
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
-    const [rows] = await pool.query(`${LIST_QUERY}${where} ORDER BY ca.criado_em DESC`, params);
+    const [rows] = await pool.query(`${LIST_QUERY}${where} ORDER BY ca.created_at DESC`, params);
     res.json(rows);
   } catch (err) {
     next(err);
@@ -68,14 +70,13 @@ router.post("/", async (req, res, next) => {
       nome,
       email,
       telefone,
-      whatsapp,
       cidade,
-      estado,
-      escolaridade,
-      experiencia,
-      pretensao_salarial,
+      linkedin,
       curriculo_url,
       vaga_id,
+      origem,
+      pretensao_salarial,
+      disponibilidade,
       mensagem,
     } = req.body;
 
@@ -95,37 +96,39 @@ router.post("/", async (req, res, next) => {
     await connection.beginTransaction();
 
     const [candidatoResult] = await connection.query(
-      `INSERT INTO rh_candidatos
-        (nome, email, telefone, whatsapp, cidade, estado, escolaridade, experiencia, pretensao_salarial, curriculo_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        nome,
-        email,
-        telefone,
-        whatsapp || telefone,
-        cidade || null,
-        estado || null,
-        escolaridade || null,
-        experiencia || null,
-        pretensao_salarial || null,
-        curriculo_url || null,
-      ]
+      `INSERT INTO rh_candidatos (nome, email, telefone, cidade, linkedin, curriculo_url)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [nome, email, telefone, cidade || null, linkedin || null, curriculo_url || null]
     );
 
     const candidatoId = candidatoResult.insertId;
 
     const [candidaturaResult] = await connection.query(
-      `INSERT INTO rh_candidaturas (candidato_id, vaga_id, etapa, mensagem)
-       VALUES (?, ?, ?, ?)`,
-      [candidatoId, vagaIdFinal, "novo_curriculo", mensagem || null]
+      `INSERT INTO rh_candidaturas
+        (candidato_id, vaga_id, origem, etapa, pretensao_salarial, disponibilidade, observacoes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        candidatoId,
+        vagaIdFinal,
+        origem || "site_induscolor",
+        "novo_curriculo",
+        pretensao_salarial || null,
+        disponibilidade || null,
+        mensagem || null,
+      ]
     );
 
     const candidaturaId = candidaturaResult.insertId;
 
     await connection.query(
-      `INSERT INTO rh_historico (candidatura_id, etapa_anterior, etapa_nova, observacao)
-       VALUES (?, NULL, ?, ?)`,
-      [candidaturaId, "novo_curriculo", vagaIdFinal ? "Candidatura recebida" : "Cadastro no banco de talentos"]
+      `INSERT INTO rh_historico (candidatura_id, acao, etapa_anterior, etapa_nova, observacao)
+       VALUES (?, ?, NULL, ?, ?)`,
+      [
+        candidaturaId,
+        "candidatura_recebida",
+        "novo_curriculo",
+        vagaIdFinal ? "Candidatura recebida" : "Cadastro no banco de talentos",
+      ]
     );
 
     await connection.commit();
@@ -144,7 +147,7 @@ router.patch("/:id/etapa", async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
     const { id } = req.params;
-    const { etapa, observacao } = req.body;
+    const { etapa, observacao, usuario } = req.body;
 
     if (!etapa) return res.status(400).json({ error: "Campo 'etapa' é obrigatório" });
 
@@ -157,9 +160,9 @@ router.patch("/:id/etapa", async (req, res, next) => {
     await connection.query("UPDATE rh_candidaturas SET etapa = ? WHERE id = ?", [etapa, id]);
 
     await connection.query(
-      `INSERT INTO rh_historico (candidatura_id, etapa_anterior, etapa_nova, observacao)
-       VALUES (?, ?, ?, ?)`,
-      [id, etapaAnterior, etapa, observacao || null]
+      `INSERT INTO rh_historico (candidatura_id, acao, etapa_anterior, etapa_nova, observacao, usuario)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, "mudanca_etapa", etapaAnterior, etapa, observacao || null, usuario || null]
     );
 
     await connection.commit();

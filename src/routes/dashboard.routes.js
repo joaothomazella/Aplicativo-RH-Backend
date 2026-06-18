@@ -6,7 +6,7 @@ const router = express.Router();
 router.get("/", async (req, res, next) => {
   try {
     const [[{ totalVagasAbertas }]] = await pool.query(
-      "SELECT COUNT(*) AS totalVagasAbertas FROM rh_vagas WHERE status = 'publicada'"
+      "SELECT COUNT(*) AS totalVagasAbertas FROM rh_vagas WHERE status = 'aberta'"
     );
     const [[{ totalCandidatos }]] = await pool.query("SELECT COUNT(*) AS totalCandidatos FROM rh_candidatos");
     const [[{ totalCandidaturas }]] = await pool.query("SELECT COUNT(*) AS totalCandidaturas FROM rh_candidaturas");
