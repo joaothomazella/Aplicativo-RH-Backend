@@ -10,6 +10,8 @@ const entrevistasRoutes = require("./routes/entrevistas.routes");
 const avaliacoesRoutes = require("./routes/avaliacoes.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const publicRoutes = require("./routes/public.routes");
+const authRoutes = require("./routes/auth.routes");
+const { authMiddleware } = require("./middleware/auth.middleware");
 
 const app = express();
 
@@ -29,12 +31,14 @@ app.get("/api/rh/db-health", async (req, res, next) => {
   }
 });
 
-app.use("/api/rh/vagas", vagasRoutes);
-app.use("/api/rh/candidaturas", candidaturasRoutes);
-app.use("/api/rh/candidatos", candidatosRoutes);
-app.use("/api/rh/entrevistas", entrevistasRoutes);
-app.use("/api/rh/avaliacoes", avaliacoesRoutes);
-app.use("/api/rh/dashboard", dashboardRoutes);
+app.use("/api/auth", authRoutes);
+
+app.use("/api/rh/vagas", authMiddleware, vagasRoutes);
+app.use("/api/rh/candidaturas", authMiddleware, candidaturasRoutes);
+app.use("/api/rh/candidatos", authMiddleware, candidatosRoutes);
+app.use("/api/rh/entrevistas", authMiddleware, entrevistasRoutes);
+app.use("/api/rh/avaliacoes", authMiddleware, avaliacoesRoutes);
+app.use("/api/rh/dashboard", authMiddleware, dashboardRoutes);
 app.use("/api/rh/public", publicRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
