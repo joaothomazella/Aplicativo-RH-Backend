@@ -14,6 +14,13 @@ const LIST_QUERY = `
     ca.avaliacao_rh,
     ca.pretensao_salarial,
     ca.disponibilidade,
+    ca.prioridade,
+    ca.responsavel_rh,
+    ca.pontos_fortes,
+    ca.pontos_atencao,
+    ca.ultimo_contato,
+    ca.data_aprovacao,
+    ca.data_reprovacao,
     ca.observacoes AS candidatura_observacoes,
     ca.created_at AS candidatura_created_at,
     ca.updated_at AS candidatura_updated_at,
@@ -54,7 +61,7 @@ const LIST_QUERY = `
 
 router.get("/", async (req, res, next) => {
   try {
-    const { etapa, vaga_id } = req.query;
+    const { etapa, vaga_id, prioridade, responsavel_rh, origem, data_de, data_ate } = req.query;
     const conditions = [];
     const params = [];
 
@@ -65,6 +72,26 @@ router.get("/", async (req, res, next) => {
     if (vaga_id) {
       conditions.push("ca.vaga_id = ?");
       params.push(vaga_id);
+    }
+    if (prioridade) {
+      conditions.push("ca.prioridade = ?");
+      params.push(prioridade);
+    }
+    if (responsavel_rh) {
+      conditions.push("ca.responsavel_rh = ?");
+      params.push(responsavel_rh);
+    }
+    if (origem) {
+      conditions.push("ca.origem = ?");
+      params.push(origem);
+    }
+    if (data_de) {
+      conditions.push("ca.created_at >= ?");
+      params.push(data_de);
+    }
+    if (data_ate) {
+      conditions.push("ca.created_at <= ?");
+      params.push(`${data_ate} 23:59:59`);
     }
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
@@ -88,8 +115,12 @@ router.get("/:id", async (req, res, next) => {
       "SELECT * FROM rh_entrevistas WHERE candidatura_id = ? ORDER BY data_entrevista ASC",
       [req.params.id]
     );
+    const [avaliacoes] = await pool.query(
+      "SELECT * FROM rh_avaliacoes WHERE candidatura_id = ? ORDER BY created_at DESC",
+      [req.params.id]
+    );
 
-    res.json({ ...rows[0], historico, entrevistas });
+    res.json({ ...rows[0], historico, entrevistas, avaliacoes });
   } catch (err) {
     next(err);
   }
@@ -128,6 +159,8 @@ async function criarCandidatura(connection, body) {
     disponibilidade,
     observacoes,
     mensagem,
+    prioridade,
+    responsavel_rh,
   } = body;
 
   if (!nome || !email || !telefone) {
@@ -185,8 +218,9 @@ async function criarCandidatura(connection, body) {
 
   const [candidaturaResult] = await connection.query(
     `INSERT INTO rh_candidaturas
-      (candidato_id, vaga_id, vaga_desejada, origem, etapa, pretensao_salarial, disponibilidade, observacoes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      (candidato_id, vaga_id, vaga_desejada, origem, etapa, pretensao_salarial, disponibilidade, observacoes,
+       prioridade, responsavel_rh)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       candidatoId,
       vagaIdFinal,
@@ -196,6 +230,8 @@ async function criarCandidatura(connection, body) {
       pretensao_salarial || null,
       disponibilidade || null,
       observacoes || mensagem || null,
+      prioridade || "media",
+      responsavel_rh || null,
     ]
   );
 
@@ -232,6 +268,54 @@ router.post("/", async (req, res, next) => {
   }
 });
 
+router.patch("/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [existingRows] = await pool.query("SELECT * FROM rh_candidaturas WHERE id = ? LIMIT 1", [id]);
+    if (existingRows.length === 0) return res.status(404).json({ error: "Candidatura não encontrada" });
+    const existing = existingRows[0];
+
+    const {
+      vaga_desejada = existing.vaga_desejada,
+      origem = existing.origem,
+      prioridade = existing.prioridade,
+      responsavel_rh = existing.responsavel_rh,
+      pontos_fortes = existing.pontos_fortes,
+      pontos_atencao = existing.pontos_atencao,
+      pretensao_salarial = existing.pretensao_salarial,
+      disponibilidade = existing.disponibilidade,
+      observacoes = existing.observacoes,
+      ultimo_contato = existing.ultimo_contato,
+    } = req.body;
+
+    await pool.query(
+      `UPDATE rh_candidaturas SET
+        vaga_desejada = ?, origem = ?, prioridade = ?, responsavel_rh = ?,
+        pontos_fortes = ?, pontos_atencao = ?, pretensao_salarial = ?,
+        disponibilidade = ?, observacoes = ?, ultimo_contato = ?
+       WHERE id = ?`,
+      [
+        vaga_desejada,
+        origem,
+        prioridade,
+        responsavel_rh,
+        pontos_fortes,
+        pontos_atencao,
+        pretensao_salarial,
+        disponibilidade,
+        observacoes,
+        ultimo_contato,
+        id,
+      ]
+    );
+
+    const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [id]);
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch("/:id/etapa", async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
@@ -247,13 +331,17 @@ router.patch("/:id/etapa", async (req, res, next) => {
     await connection.beginTransaction();
 
     if (etapa === "reprovado") {
-      await connection.query("UPDATE rh_candidaturas SET etapa = ?, motivo_reprovacao = ? WHERE id = ?", [
-        etapa,
-        motivo_reprovacao || observacao || null,
-        id,
-      ]);
+      await connection.query(
+        "UPDATE rh_candidaturas SET etapa = ?, motivo_reprovacao = ?, data_reprovacao = NOW(), ultimo_contato = NOW() WHERE id = ?",
+        [etapa, motivo_reprovacao || observacao || null, id]
+      );
+    } else if (etapa === "aprovado") {
+      await connection.query(
+        "UPDATE rh_candidaturas SET etapa = ?, data_aprovacao = NOW(), ultimo_contato = NOW() WHERE id = ?",
+        [etapa, id]
+      );
     } else {
-      await connection.query("UPDATE rh_candidaturas SET etapa = ? WHERE id = ?", [etapa, id]);
+      await connection.query("UPDATE rh_candidaturas SET etapa = ?, ultimo_contato = NOW() WHERE id = ?", [etapa, id]);
     }
 
     await connection.query(

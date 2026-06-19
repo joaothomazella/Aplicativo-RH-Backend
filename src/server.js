@@ -5,6 +5,9 @@ const cors = require("cors");
 const pool = require("./db/pool");
 const vagasRoutes = require("./routes/vagas.routes");
 const { router: candidaturasRoutes } = require("./routes/candidaturas.routes");
+const candidatosRoutes = require("./routes/candidatos.routes");
+const entrevistasRoutes = require("./routes/entrevistas.routes");
+const avaliacoesRoutes = require("./routes/avaliacoes.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const publicRoutes = require("./routes/public.routes");
 
@@ -28,6 +31,9 @@ app.get("/api/rh/db-health", async (req, res, next) => {
 
 app.use("/api/rh/vagas", vagasRoutes);
 app.use("/api/rh/candidaturas", candidaturasRoutes);
+app.use("/api/rh/candidatos", candidatosRoutes);
+app.use("/api/rh/entrevistas", entrevistasRoutes);
+app.use("/api/rh/avaliacoes", avaliacoesRoutes);
 app.use("/api/rh/dashboard", dashboardRoutes);
 app.use("/api/rh/public", publicRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
