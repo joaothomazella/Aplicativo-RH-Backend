@@ -9,6 +9,8 @@ const candidatosRoutes = require("./routes/candidatos.routes");
 const entrevistasRoutes = require("./routes/entrevistas.routes");
 const avaliacoesRoutes = require("./routes/avaliacoes.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const funcionariosRoutes = require("./routes/funcionarios.routes");
+const auditoriaRoutes = require("./routes/auditoria.routes");
 const publicRoutes = require("./routes/public.routes");
 const authRoutes = require("./routes/auth.routes");
 const { authMiddleware } = require("./middleware/auth.middleware");
@@ -39,6 +41,8 @@ app.use("/api/rh/candidatos", authMiddleware, candidatosRoutes);
 app.use("/api/rh/entrevistas", authMiddleware, entrevistasRoutes);
 app.use("/api/rh/avaliacoes", authMiddleware, avaliacoesRoutes);
 app.use("/api/rh/dashboard", authMiddleware, dashboardRoutes);
+app.use("/api/rh/funcionarios", authMiddleware, funcionariosRoutes);
+app.use("/api/rh/auditoria", authMiddleware, auditoriaRoutes);
 app.use("/api/rh/public", publicRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
