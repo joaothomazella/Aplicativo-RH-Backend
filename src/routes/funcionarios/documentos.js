@@ -176,6 +176,68 @@ router.put("/:documentoId", uploadDocumento.single("arquivo"), async (req, res, 
   }
 });
 
+function sanitizeFilenameForHeader(name) {
+  return String(name).replace(/[\r\n"]/g, "_");
+}
+
+async function getDocumentoArquivo(req, res) {
+  const [rows] = await pool.query(
+    "SELECT * FROM rh_funcionarios_documentos WHERE id = ? AND funcionario_id = ?",
+    [req.params.documentoId, req.params.id]
+  );
+  if (rows.length === 0) {
+    res.status(404).json({ success: false, error: "Documento não encontrado." });
+    return null;
+  }
+  const documento = rows[0];
+  if (!documento.arquivo_url || !documento.arquivo_url.startsWith("/uploads/documentos/")) {
+    res.status(404).json({ success: false, error: "Este documento não possui arquivo anexado." });
+    return null;
+  }
+
+  const filePath = path.join(UPLOAD_DIR, path.basename(documento.arquivo_url));
+  if (!fs.existsSync(filePath)) {
+    res.status(404).json({ success: false, error: "O arquivo não foi encontrado no servidor." });
+    return null;
+  }
+
+  return { documento, filePath };
+}
+
+router.get("/:documentoId/download", async (req, res, next) => {
+  try {
+    const found = await getDocumentoArquivo(req, res);
+    if (!found) return;
+    const { documento, filePath } = found;
+
+    await registrarAuditoria({
+      req,
+      entidade: "funcionario_documento",
+      entidadeId: documento.id,
+      acao: "download_documento",
+      descricao: `Documento "${documento.titulo}" (${documento.tipo}) baixado.`,
+    });
+
+    res.download(filePath, documento.arquivo_nome || path.basename(filePath));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:documentoId/visualizar", async (req, res, next) => {
+  try {
+    const found = await getDocumentoArquivo(req, res);
+    if (!found) return;
+    const { documento, filePath } = found;
+
+    const inlineName = sanitizeFilenameForHeader(documento.arquivo_nome || path.basename(filePath));
+    res.set("Content-Disposition", `inline; filename="${inlineName}"`);
+    res.sendFile(filePath);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete("/:documentoId", async (req, res, next) => {
   try {
     const [existingRows] = await pool.query(

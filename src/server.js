@@ -44,7 +44,7 @@ app.use("/api/rh/dashboard", authMiddleware, dashboardRoutes);
 app.use("/api/rh/funcionarios", authMiddleware, funcionariosRoutes);
 app.use("/api/rh/auditoria", authMiddleware, auditoriaRoutes);
 app.use("/api/rh/public", publicRoutes);
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+app.use("/uploads/curriculos", express.static(path.join(__dirname, "..", "uploads", "curriculos")));
 
 app.use((req, res) => {
   res.status(404).json({ error: "Rota não encontrada" });
