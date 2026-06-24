@@ -8,7 +8,8 @@ router.get("/:id/ficha", async (req, res, next) => {
   try {
     const { id } = req.params;
     const sensiveisSolicitado = req.query.sensiveis === "true";
-    const incluirSensiveis = sensiveisSolicitado && ["admin", "rh"].includes(req.user?.perfil);
+    const podeVerSensiveis = ["admin", "rh", "dp"].includes(req.user?.perfil);
+    const incluirSensiveis = sensiveisSolicitado && podeVerSensiveis;
 
     if (sensiveisSolicitado && !incluirSensiveis) {
       return res.status(403).json({ success: false, error: "Você não tem permissão para acessar dados sensíveis." });
@@ -83,7 +84,7 @@ router.get("/:id/ficha", async (req, res, next) => {
     const beneficios = {
       convenio_unimed: Boolean(funcionario.convenio_unimed),
       cartao_alimentacao: Boolean(funcionario.cartao_alimentacao),
-      salario_atual: funcionario.salario_atual,
+      ...(podeVerSensiveis ? { salario_atual: funcionario.salario_atual } : {}),
     };
 
     if (incluirSensiveis) {
@@ -103,7 +104,7 @@ router.get("/:id/ficha", async (req, res, next) => {
         dados_profissionais: dadosProfissionais,
         beneficios,
         historico_resumido: {
-          ultimo_reajuste: ultimoReajuste || null,
+          ultimo_reajuste: podeVerSensiveis ? ultimoReajuste || null : null,
           ultima_alteracao_cargo: ultimaAlteracaoCargo || null,
           proximas_ferias: proximasFerias,
           treinamentos_vencidos: Number(treinamentosVencidosRow.total) || 0,
@@ -114,6 +115,7 @@ router.get("/:id/ficha", async (req, res, next) => {
         },
         observacoes: funcionario.observacoes,
         inclui_documentos_sensiveis: incluirSensiveis,
+        inclui_dados_salariais: podeVerSensiveis,
       },
     });
   } catch (err) {

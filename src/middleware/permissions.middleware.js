@@ -1,5 +1,5 @@
-const SENSITIVE_ROLES = ["admin", "rh"];
-const MANAGE_ROLES = ["admin", "rh"];
+const SENSITIVE_ROLES = ["admin", "rh", "dp"];
+const MANAGE_ROLES = ["admin", "rh", "dp"];
 
 function requireRole(...roles) {
   return (req, res, next) => {
