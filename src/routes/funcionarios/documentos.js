@@ -64,23 +64,29 @@ router.post("/", uploadDocumento.single("arquivo"), async (req, res, next) => {
   try {
     const funcionario = await getFuncionario(req.params.id);
     if (!funcionario) {
+      if (req.file) fs.unlink(req.file.path, () => {});
       return res.status(404).json({ success: false, error: "Funcionário não encontrado." });
     }
 
     const { tipo, titulo, descricao, data_documento, data_validade, status, observacoes, arquivo_url } = req.body;
 
     if (!tipo || !String(tipo).trim()) {
+      if (req.file) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ success: false, error: "O tipo do documento é obrigatório." });
     }
     if (!titulo || !String(titulo).trim()) {
+      if (req.file) fs.unlink(req.file.path, () => {});
       return res.status(400).json({ success: false, error: "O título do documento é obrigatório." });
     }
 
+    const tipoFinal = tipo.trim();
+    const tituloFinal = titulo.trim();
     const statusFinal = computeStatus(data_validade || null, status);
     const arquivoUrl = req.file ? documentoUrlFromFile(req.file) : arquivo_url || null;
     const arquivoNome = req.file ? req.file.originalname : null;
     const arquivoTipo = req.file ? req.file.mimetype : null;
     const arquivoTamanho = req.file ? req.file.size : null;
+    const agora = new Date();
 
     const [result] = await pool.query(
       `INSERT INTO rh_funcionarios_documentos
@@ -89,8 +95,8 @@ router.post("/", uploadDocumento.single("arquivo"), async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.params.id,
-        tipo.trim(),
-        titulo.trim(),
+        tipoFinal,
+        tituloFinal,
         descricao || null,
         data_documento || null,
         data_validade || null,
@@ -104,18 +110,38 @@ router.post("/", uploadDocumento.single("arquivo"), async (req, res, next) => {
       ]
     );
 
-    const [rows] = await pool.query("SELECT * FROM rh_funcionarios_documentos WHERE id = ?", [result.insertId]);
+    const documento = {
+      id: result.insertId,
+      funcionario_id: Number(req.params.id),
+      tipo: tipoFinal,
+      titulo: tituloFinal,
+      descricao: descricao || null,
+      data_documento: data_documento || null,
+      data_validade: data_validade || null,
+      status: statusFinal,
+      arquivo_nome: arquivoNome,
+      arquivo_url: arquivoUrl,
+      arquivo_tipo: arquivoTipo,
+      arquivo_tamanho: arquivoTamanho,
+      observacoes: observacoes || null,
+      usuario_id: req.user?.id || null,
+      usuario_nome: req.user?.nome || null,
+      created_at: agora,
+      updated_at: agora,
+    };
 
-    await registrarAuditoria({
+    // Responde já: a auditoria não precisa bloquear o retorno ao usuário,
+    // o próprio util já loga erro internamente sem lançar exceção.
+    registrarAuditoria({
       req,
       entidade: "funcionario_documento",
       entidadeId: result.insertId,
       acao: "criar_documento",
-      descricao: `Documento "${titulo.trim()}" (${tipo.trim()}) cadastrado para ${funcionario.nome_completo}.`,
-      dadosDepois: rows[0],
+      descricao: `Documento "${tituloFinal}" (${tipoFinal}) cadastrado para ${funcionario.nome_completo}.`,
+      dadosDepois: documento,
     });
 
-    res.status(201).json({ success: true, data: rows[0] });
+    res.status(201).json({ success: true, data: documento });
   } catch (err) {
     next(err);
   }
@@ -147,6 +173,11 @@ router.put("/:documentoId", uploadDocumento.single("arquivo"), async (req, res, 
     const arquivoNomeFinal = req.file ? req.file.originalname : existing.arquivo_nome;
     const arquivoTipoFinal = req.file ? req.file.mimetype : existing.arquivo_tipo;
     const arquivoTamanhoFinal = req.file ? req.file.size : existing.arquivo_tamanho;
+    const tipoFinal = tipo !== undefined ? tipo.trim() : existing.tipo;
+    const tituloFinal = titulo !== undefined ? titulo.trim() : existing.titulo;
+    const descricaoFinal = descricao !== undefined ? descricao || null : existing.descricao;
+    const dataDocumentoFinal = data_documento !== undefined ? data_documento || null : existing.data_documento;
+    const observacoesFinal = observacoes !== undefined ? observacoes || null : existing.observacoes;
 
     await pool.query(
       `UPDATE rh_funcionarios_documentos SET
@@ -154,23 +185,39 @@ router.put("/:documentoId", uploadDocumento.single("arquivo"), async (req, res, 
         arquivo_nome = ?, arquivo_url = ?, arquivo_tipo = ?, arquivo_tamanho = ?, observacoes = ?
        WHERE id = ?`,
       [
-        tipo !== undefined ? tipo.trim() : existing.tipo,
-        titulo !== undefined ? titulo.trim() : existing.titulo,
-        descricao !== undefined ? descricao || null : existing.descricao,
-        data_documento !== undefined ? data_documento || null : existing.data_documento,
+        tipoFinal,
+        tituloFinal,
+        descricaoFinal,
+        dataDocumentoFinal,
         dataValidadeFinal,
         statusFinal,
         arquivoNomeFinal,
         arquivoUrlFinal,
         arquivoTipoFinal,
         arquivoTamanhoFinal,
-        observacoes !== undefined ? observacoes || null : existing.observacoes,
+        observacoesFinal,
         req.params.documentoId,
       ]
     );
 
-    const [rows] = await pool.query("SELECT * FROM rh_funcionarios_documentos WHERE id = ?", [req.params.documentoId]);
-    res.json({ success: true, data: rows[0] });
+    res.json({
+      success: true,
+      data: {
+        ...existing,
+        tipo: tipoFinal,
+        titulo: tituloFinal,
+        descricao: descricaoFinal,
+        data_documento: dataDocumentoFinal,
+        data_validade: dataValidadeFinal,
+        status: statusFinal,
+        arquivo_nome: arquivoNomeFinal,
+        arquivo_url: arquivoUrlFinal,
+        arquivo_tipo: arquivoTipoFinal,
+        arquivo_tamanho: arquivoTamanhoFinal,
+        observacoes: observacoesFinal,
+        updated_at: new Date(),
+      },
+    });
   } catch (err) {
     next(err);
   }
