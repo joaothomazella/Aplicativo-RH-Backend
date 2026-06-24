@@ -190,6 +190,22 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+router.get("/aniversariantes", async (req, res, next) => {
+  try {
+    const mes = req.query.mes ? Number(req.query.mes) : new Date().getMonth() + 1;
+    const [rows] = await pool.query(
+      `SELECT id, nome_completo, setor, cargo_atual, data_nascimento
+      FROM rh_funcionarios
+      WHERE status = 'ativo' AND data_nascimento IS NOT NULL AND MONTH(data_nascimento) = ?
+      ORDER BY DAY(data_nascimento) ASC`,
+      [mes]
+    );
+    res.json({ success: true, data: rows, mes });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const CAMPOS_SENSIVEIS_GESTOR = ["cpf", "rg", "pis", "titulo_eleitor", "salario_atual"];
 
 function ocultarCamposSensiveis(funcionario, req) {
