@@ -1,7 +1,13 @@
+const crypto = require("crypto");
 const express = require("express");
 const pool = require("../db/pool");
 const { canManageFuncionarios } = require("../middleware/permissions.middleware");
 const { registrarAuditoria } = require("../utils/auditoria");
+
+function gerarCodigoCertificado(turmaId, funcionarioId) {
+  const sufixo = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `CERT-${turmaId}-${funcionarioId}-${sufixo}`;
+}
 
 const router = express.Router();
 
@@ -510,6 +516,125 @@ router.delete("/:id", canManageFuncionarios, async (req, res, next) => {
     res.json({ success: true });
   } catch (err) {
     next(err);
+  }
+});
+
+router.get("/:id/certificados", async (req, res, next) => {
+  try {
+    const [turmaRows] = await pool.query("SELECT * FROM rh_treinamentos_turmas WHERE id = ?", [req.params.id]);
+    if (turmaRows.length === 0) {
+      return res.status(404).json({ success: false, error: "Turma de treinamento não encontrada." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT p.id AS participante_id, p.funcionario_id, p.status_participacao, f.nome_completo, f.setor, f.cargo_atual,
+              c.id AS certificado_id, c.codigo, c.data_emissao, c.baixado_em, c.created_at AS certificado_criado_em
+       FROM rh_treinamentos_turma_participantes p
+       JOIN rh_funcionarios f ON f.id = p.funcionario_id
+       LEFT JOIN rh_certificados_treinamentos c ON c.participante_id = p.id
+       WHERE p.turma_id = ?
+       ORDER BY f.nome_completo ASC`,
+      [req.params.id]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:id/certificados", canManageFuncionarios, async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const [turmaRows] = await connection.query("SELECT * FROM rh_treinamentos_turmas WHERE id = ?", [req.params.id]);
+    if (turmaRows.length === 0) {
+      return res.status(404).json({ success: false, error: "Turma de treinamento não encontrada." });
+    }
+    const turma = turmaRows[0];
+
+    const { funcionario_ids } = req.body;
+
+    const [participantesRows] = await connection.query(
+      `SELECT p.*, f.nome_completo
+       FROM rh_treinamentos_turma_participantes p
+       JOIN rh_funcionarios f ON f.id = p.funcionario_id
+       WHERE p.turma_id = ? AND p.status_participacao = 'participou'`,
+      [req.params.id]
+    );
+
+    const elegiveis = Array.isArray(funcionario_ids) && funcionario_ids.length > 0
+      ? participantesRows.filter((p) => funcionario_ids.map(Number).includes(p.funcionario_id))
+      : participantesRows;
+
+    if (elegiveis.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Nenhum participante elegível (com status 'participou') encontrado para gerar certificado.",
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const dataEmissao = new Date().toISOString().slice(0, 10);
+    let gerados = 0;
+
+    for (const participante of elegiveis) {
+      const [existenteRows] = await connection.query(
+        "SELECT id FROM rh_certificados_treinamentos WHERE participante_id = ?",
+        [participante.id]
+      );
+      if (existenteRows.length > 0) continue;
+
+      const codigo = gerarCodigoCertificado(turma.id, participante.funcionario_id);
+      await connection.query(
+        `INSERT INTO rh_certificados_treinamentos
+          (turma_id, funcionario_id, participante_id, codigo, nome_funcionario_snapshot, nome_treinamento_snapshot,
+           instituicao_instrutor_snapshot, carga_horaria_snapshot, data_realizacao_snapshot, data_emissao, usuario_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          turma.id,
+          participante.funcionario_id,
+          participante.id,
+          codigo,
+          participante.nome_completo,
+          turma.nome_treinamento,
+          turma.instituicao_instrutor,
+          turma.carga_horaria,
+          turma.data_realizacao,
+          dataEmissao,
+          req.user?.id || null,
+        ]
+      );
+      gerados++;
+    }
+
+    await connection.commit();
+
+    await registrarAuditoria({
+      req,
+      entidade: "certificado_treinamento",
+      entidadeId: req.params.id,
+      acao: "gerar",
+      descricao: `Gerou ${gerados} certificado(s) para a turma "${turma.nome_treinamento}".`,
+    });
+
+    const [rows] = await pool.query(
+      `SELECT p.id AS participante_id, p.funcionario_id, p.status_participacao, f.nome_completo, f.setor, f.cargo_atual,
+              c.id AS certificado_id, c.codigo, c.data_emissao, c.baixado_em, c.created_at AS certificado_criado_em
+       FROM rh_treinamentos_turma_participantes p
+       JOIN rh_funcionarios f ON f.id = p.funcionario_id
+       LEFT JOIN rh_certificados_treinamentos c ON c.participante_id = p.id
+       WHERE p.turma_id = ?
+       ORDER BY f.nome_completo ASC`,
+      [req.params.id]
+    );
+
+    res.status(201).json({ success: true, data: rows, message: `${gerados} certificado(s) gerado(s).` });
+  } catch (err) {
+    await connection.rollback();
+    next(err);
+  } finally {
+    connection.release();
   }
 });
 
