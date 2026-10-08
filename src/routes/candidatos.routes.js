@@ -1,6 +1,8 @@
 const express = require("express");
 const pool = require("../db/pool");
 const { criarCandidatura, LIST_QUERY } = require("./candidaturas.routes");
+const { requireRole } = require("../middleware/permissions.middleware");
+const { upload, curriculoUrlFromFile } = require("../middleware/upload");
 
 const router = express.Router();
 
@@ -62,11 +64,18 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+// upload.single e inofensivo em requisicoes JSON (o multer apenas ignora e
+// deixa req.body como veio), entao a rota continua aceitando os dois formatos:
+// multipart quando o RH anexa o curriculo, JSON quando nao anexa nada.
+router.post("/", requireRole("admin", "rh"), upload.single("curriculo"), async (req, res, next) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const candidaturaId = await criarCandidatura(connection, { ...req.body, origem: req.body.origem || "cadastro_rh" });
+    const candidaturaId = await criarCandidatura(connection, {
+      ...req.body,
+      curriculo_url: curriculoUrlFromFile(req.file) || req.body.curriculo_url || null,
+      origem: req.body.origem || "cadastro_rh",
+    });
     await connection.commit();
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [candidaturaId]);
@@ -79,7 +88,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", requireRole("admin", "rh"), upload.single("curriculo"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const [existingRows] = await pool.query("SELECT * FROM rh_candidatos WHERE id = ? LIMIT 1", [id]);
@@ -113,13 +122,17 @@ router.patch("/:id", async (req, res, next) => {
       observacoes = existing.observacoes,
     } = req.body;
 
+    // Um curriculo anexado nesta edicao substitui o anterior; sem anexo, o que
+    // ja estava gravado continua valendo.
+    const curriculo_url = curriculoUrlFromFile(req.file) || existing.curriculo_url;
+
     await pool.query(
       `UPDATE rh_candidatos SET
         nome = ?, email = ?, telefone = ?, whatsapp = ?, data_nascimento = ?, cpf = ?, rg = ?, cep = ?,
         endereco = ?, bairro = ?, cidade = ?, estado = ?, estado_civil = ?, cargo_anterior = ?,
         empresa_anterior = ?, tempo_experiencia = ?, escolaridade = ?, cursos = ?, cnh = ?,
         disponibilidade_horario = ?, disponibilidade_inicio = ?, resumo_profissional = ?, linkedin = ?,
-        observacoes = ?
+        curriculo_url = ?, observacoes = ?
        WHERE id = ?`,
       [
         nome,
@@ -145,6 +158,7 @@ router.patch("/:id", async (req, res, next) => {
         disponibilidade_inicio,
         resumo_profissional,
         linkedin,
+        curriculo_url,
         observacoes,
         id,
       ]

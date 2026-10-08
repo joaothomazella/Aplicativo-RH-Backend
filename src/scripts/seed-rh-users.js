@@ -7,7 +7,9 @@ const USUARIOS = [
   { usuario: "gil", senha: "GIL005", perfil: "admin", nome: "Gil" },
   { usuario: "heverton", senha: "332799", perfil: "admin", nome: "Heverton" },
   { usuario: "Thomazella", senha: "THOMAZELLA04", perfil: "admin", nome: "Thomazella" },
-  { usuario: "sabrina", senha: "2908SA", perfil: "dp", nome: "Sabrina" },
+  // Perfil "rh" = tudo que o "dp" ja via (Departamento Pessoal) mais
+  // Recrutamento e Selecao.
+  { usuario: "sabrina", senha: "2908SA", perfil: "rh", nome: "Sabrina" },
 ];
 
 async function run() {
