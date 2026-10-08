@@ -57,7 +57,8 @@
 --   vaga_id INT NULL (FK -> rh_vagas.id; NULL = banco de talentos)
 --   vaga_desejada VARCHAR(150)            -- texto livre, usado no banco de talentos sem vaga_id
 --   origem VARCHAR(80) DEFAULT 'site_induscolor'
---   etapa ENUM('novo_curriculo','triagem','entrevista','teste','aprovado','reprovado','banco_talentos') DEFAULT 'novo_curriculo'
+--   etapa ENUM('novo_curriculo','triagem','entrevista','nao_compareceu','teste','aprovado','reprovado','banco_talentos') DEFAULT 'novo_curriculo'
+--     (ver sql/migration_010_etapa_nao_compareceu.sql)
 --   status VARCHAR(80) DEFAULT 'em_analise'
 --   motivo_reprovacao VARCHAR(255)
 --   avaliacao_rh MEDIUMTEXT

@@ -183,6 +183,20 @@ const COLUNAS_CANDIDATO = [
 // andamento, e reaproveita-la evita o card duplicado no Kanban.
 const ETAPAS_ENCERRADAS = ["aprovado", "reprovado"];
 
+// Mesma lista do enum de rh_candidaturas.etapa (sql/migration_010...). Validar
+// aqui devolve uma mensagem clara; sem isso o MySQL recusa o valor com um erro
+// de banco que nao diz nada para quem esta usando o app.
+const ETAPAS_VALIDAS = [
+  "novo_curriculo",
+  "triagem",
+  "entrevista",
+  "nao_compareceu",
+  "teste",
+  "aprovado",
+  "reprovado",
+  "banco_talentos",
+];
+
 // Reconhece quem ja esta na base, do identificador mais confiavel para o menos
 // confiavel. Sem isso a mesma pessoa que manda o curriculo duas vezes (pelo
 // site e pelo cadastro manual, por exemplo) vira dois candidatos e dois cards.
@@ -438,6 +452,9 @@ router.patch("/:id/etapa", requireRole("admin", "rh"), async (req, res, next) =>
     const { etapa, observacao, usuario, motivo_reprovacao } = req.body;
 
     if (!etapa) return res.status(400).json({ error: "Campo 'etapa' é obrigatório" });
+    if (!ETAPAS_VALIDAS.includes(etapa)) {
+      return res.status(400).json({ error: `Etapa inválida: "${etapa}"` });
+    }
 
     const [rows] = await connection.query("SELECT * FROM rh_candidaturas WHERE id = ? LIMIT 1", [id]);
     if (rows.length === 0) return res.status(404).json({ error: "Candidatura não encontrada" });
@@ -448,6 +465,13 @@ router.patch("/:id/etapa", requireRole("admin", "rh"), async (req, res, next) =>
     if (etapa === "reprovado") {
       await connection.query(
         "UPDATE rh_candidaturas SET etapa = ?, motivo_reprovacao = ?, data_reprovacao = NOW(), ultimo_contato = NOW() WHERE id = ?",
+        [etapa, motivo_reprovacao || observacao || null, id]
+      );
+    } else if (etapa === "nao_compareceu") {
+      // Faltar a entrevista nao e reprovacao: o motivo fica registrado, mas sem
+      // data_reprovacao, para o candidato nao entrar nas contas de reprovados.
+      await connection.query(
+        "UPDATE rh_candidaturas SET etapa = ?, motivo_reprovacao = ?, ultimo_contato = NOW() WHERE id = ?",
         [etapa, motivo_reprovacao || observacao || null, id]
       );
     } else if (etapa === "aprovado") {
