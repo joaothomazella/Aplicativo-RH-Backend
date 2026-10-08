@@ -12,7 +12,6 @@ const relatoriosRoutes = require("./funcionarios/relatorios");
 const fichaRoutes = require("./funcionarios/ficha");
 const documentosRoutes = require("./funcionarios/documentos");
 const checklistsRoutes = require("./funcionarios/checklists");
-const importacaoRoutes = require("./funcionarios/importacao");
 const { canManageFuncionarios, canAccessSensitiveData } = require("../middleware/permissions.middleware");
 const { registrarAuditoria } = require("../utils/auditoria");
 
@@ -21,7 +20,6 @@ const router = express.Router();
 router.use("/config", configRoutes);
 router.use("/metricas", metricasRoutes);
 router.use("/relatorios", relatoriosRoutes);
-router.use("/importar", importacaoRoutes);
 router.use("/", fichaRoutes);
 router.use("/:id/reajustes", canAccessSensitiveData, reajustesRoutes);
 router.use("/:id/cargos", cargosRoutes);

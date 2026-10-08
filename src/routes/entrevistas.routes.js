@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("../db/pool");
+const { requireRole } = require("../middleware/permissions.middleware");
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-router.post("/", async (req, res, next) => {
+router.post("/", requireRole("admin", "rh"), async (req, res, next) => {
   try {
     const {
       candidatura_id,
@@ -85,7 +86,7 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-router.patch("/:id", async (req, res, next) => {
+router.patch("/:id", requireRole("admin", "rh"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const [existingRows] = await pool.query("SELECT * FROM rh_entrevistas WHERE id = ? LIMIT 1", [id]);
