@@ -1,7 +1,7 @@
 const express = require("express");
 const pool = require("../db/pool");
 const { upload, curriculoUrlFromFile } = require("../middleware/upload");
-const { criarCandidatura, LIST_QUERY } = require("./candidaturas.routes");
+const { criarCandidatura, LIST_QUERY, comSetores } = require("./candidaturas.routes");
 
 const router = express.Router();
 
@@ -40,7 +40,7 @@ router.post("/candidaturas", upload.single("curriculo"), async (req, res, next) 
     await connection.commit();
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [candidaturaId]);
-    res.status(201).json(rows[0]);
+    res.status(201).json(comSetores(rows)[0]);
   } catch (err) {
     await connection.rollback();
     next(err);

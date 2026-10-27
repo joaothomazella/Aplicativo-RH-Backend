@@ -1,6 +1,6 @@
 const express = require("express");
 const pool = require("../db/pool");
-const { criarCandidatura, LIST_QUERY } = require("./candidaturas.routes");
+const { criarCandidatura, LIST_QUERY, comSetores } = require("./candidaturas.routes");
 const { requireRole } = require("../middleware/permissions.middleware");
 const { upload, curriculoUrlFromFile } = require("../middleware/upload");
 
@@ -29,7 +29,7 @@ router.get("/", async (req, res, next) => {
 
     const where = ` WHERE ${conditions.join(" AND ")}`;
     const [rows] = await pool.query(`${LIST_QUERY}${where} ORDER BY ca.created_at DESC`, params);
-    res.json(rows);
+    res.json(comSetores(rows));
   } catch (err) {
     next(err);
   }
@@ -44,7 +44,7 @@ router.get("/:id", async (req, res, next) => {
     );
     if (rows.length === 0) return res.status(404).json({ error: "Candidato não encontrado" });
 
-    const candidatura = rows[0];
+    const candidatura = comSetores(rows)[0];
     const [historico] = await pool.query(
       "SELECT * FROM rh_historico WHERE candidatura_id = ? ORDER BY created_at ASC",
       [candidatura.candidatura_id]
@@ -79,7 +79,7 @@ router.post("/", requireRole("admin", "rh"), upload.single("curriculo"), async (
     await connection.commit();
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [candidaturaId]);
-    res.status(201).json(rows[0]);
+    res.status(201).json(comSetores(rows)[0]);
   } catch (err) {
     await connection.rollback();
     next(err);
@@ -217,7 +217,7 @@ router.patch("/:id", requireRole("admin", "rh"), upload.single("curriculo"), asy
     }
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE c.id = ? ORDER BY ca.created_at DESC LIMIT 1`, [id]);
-    res.json(rows[0]);
+    res.json(comSetores(rows)[0]);
   } catch (err) {
     next(err);
   }

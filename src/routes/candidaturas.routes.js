@@ -54,21 +54,52 @@ const LIST_QUERY = `
     c.resumo_profissional,
     c.linkedin,
     c.curriculo_url,
-    c.observacoes AS candidato_observacoes
+    c.observacoes AS candidato_observacoes,
+    (SELECT GROUP_CONCAT(CONCAT(s.id, ':', s.nome) ORDER BY s.nome SEPARATOR '||')
+       FROM rh_candidatura_setores cs
+       JOIN rh_funcionarios_setores s ON s.id = cs.setor_id
+      WHERE cs.candidatura_id = ca.id) AS setores_raw
   FROM rh_candidaturas ca
   JOIN rh_candidatos c ON c.id = ca.candidato_id
   LEFT JOIN rh_vagas v ON v.id = ca.vaga_id
 `;
 
+// O GROUP_CONCAT acima devolve "3:Producao||7:Laboratorio". Os nomes dos
+// setores sao cadastrados em Funcionarios > Configuracoes e nunca contem "||",
+// e o nome e separado do id pelos dois-pontos mais a esquerda.
+function comSetores(linhas) {
+  return linhas.map((linha) => {
+    const { setores_raw, ...resto } = linha;
+    const setores = String(setores_raw ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((item) => {
+        const corte = item.indexOf(":");
+        return { id: Number(item.slice(0, corte)), nome: item.slice(corte + 1) };
+      });
+    return { ...resto, setores };
+  });
+}
+
 router.get("/", async (req, res, next) => {
   try {
-    const { etapa, vaga_id, prioridade, responsavel_rh, origem, data_de, data_ate } = req.query;
+    const { etapa, vaga_id, prioridade, responsavel_rh, origem, data_de, data_ate, setor } = req.query;
     const conditions = [];
     const params = [];
 
     if (etapa) {
       conditions.push("ca.etapa = ?");
       params.push(etapa);
+    }
+    // Quadro Geral = caixa de entrada: so quem ainda nao foi destinado a
+    // nenhum setor. Um id de setor traz quem foi destinado aquele setor.
+    if (setor === "geral") {
+      conditions.push("NOT EXISTS (SELECT 1 FROM rh_candidatura_setores cs WHERE cs.candidatura_id = ca.id)");
+    } else if (setor) {
+      conditions.push(
+        "EXISTS (SELECT 1 FROM rh_candidatura_setores cs WHERE cs.candidatura_id = ca.id AND cs.setor_id = ?)"
+      );
+      params.push(setor);
     }
     if (vaga_id) {
       conditions.push("ca.vaga_id = ?");
@@ -97,7 +128,7 @@ router.get("/", async (req, res, next) => {
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
     const [rows] = await pool.query(`${LIST_QUERY}${where} ORDER BY ca.created_at DESC`, params);
-    res.json(rows);
+    res.json(comSetores(rows));
   } catch (err) {
     next(err);
   }
@@ -121,7 +152,7 @@ router.get("/:id", async (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ ...rows[0], historico, entrevistas, avaliacoes });
+    res.json({ ...comSetores(rows)[0], historico, entrevistas, avaliacoes });
   } catch (err) {
     next(err);
   }
@@ -388,7 +419,7 @@ router.post("/", requireRole("admin", "rh"), async (req, res, next) => {
     await connection.commit();
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [candidaturaId]);
-    res.status(201).json(rows[0]);
+    res.status(201).json(comSetores(rows)[0]);
   } catch (err) {
     await connection.rollback();
     next(err);
@@ -439,7 +470,7 @@ router.patch("/:id", requireRole("admin", "rh"), async (req, res, next) => {
     );
 
     const [rows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [id]);
-    res.json(rows[0]);
+    res.json(comSetores(rows)[0]);
   } catch (err) {
     next(err);
   }
@@ -492,7 +523,91 @@ router.patch("/:id/etapa", requireRole("admin", "rh"), async (req, res, next) =>
     await connection.commit();
 
     const [updatedRows] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [id]);
-    res.json(updatedRows[0]);
+    res.json(comSetores(updatedRows)[0]);
+  } catch (err) {
+    await connection.rollback();
+    next(err);
+  } finally {
+    connection.release();
+  }
+});
+
+// Destina a candidatura a um ou mais setores. Enviar uma lista vazia devolve o
+// card ao quadro Geral.
+router.put("/:id/setores", requireRole("admin", "rh"), async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    const { setores, usuario } = req.body;
+
+    if (!Array.isArray(setores)) {
+      return res.status(400).json({ error: "Campo 'setores' deve ser uma lista de ids" });
+    }
+
+    const ids = [...new Set(setores.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+
+    const [candidatura] = await connection.query(
+      "SELECT id FROM rh_candidaturas WHERE id = ? LIMIT 1",
+      [id]
+    );
+    if (candidatura.length === 0) {
+      return res.status(404).json({ error: "Candidatura não encontrada" });
+    }
+
+    // Confere os ids contra o cadastro antes de gravar: um setor desativado ou
+    // apagado em Funcionarios > Configuracoes nao deve virar um quadro fantasma.
+    let validos = [];
+    if (ids.length > 0) {
+      const [rows] = await connection.query(
+        "SELECT id, nome FROM rh_funcionarios_setores WHERE id IN (?) AND ativo = 1",
+        [ids]
+      );
+      validos = rows;
+      if (validos.length !== ids.length) {
+        return res.status(400).json({ error: "Há setores inválidos ou desativados na lista" });
+      }
+    }
+
+    const [antesRows] = await connection.query(
+      `SELECT s.nome FROM rh_candidatura_setores cs
+         JOIN rh_funcionarios_setores s ON s.id = cs.setor_id
+        WHERE cs.candidatura_id = ?
+        ORDER BY s.nome`,
+      [id]
+    );
+    const antes = antesRows.map((r) => r.nome);
+    const depois = validos.map((r) => r.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+    await connection.beginTransaction();
+
+    await connection.query("DELETE FROM rh_candidatura_setores WHERE candidatura_id = ?", [id]);
+    if (ids.length > 0) {
+      await connection.query("INSERT INTO rh_candidatura_setores (candidatura_id, setor_id) VALUES ?", [
+        ids.map((setorId) => [id, setorId]),
+      ]);
+    }
+
+    // So registra no historico quando a destinacao realmente mudou, para nao
+    // encher a ficha de linhas iguais quando a caixa e aberta e confirmada.
+    if (antes.join(", ") !== depois.join(", ")) {
+      await connection.query(
+        `INSERT INTO rh_historico (candidatura_id, acao, observacao, usuario)
+         VALUES (?, ?, ?, ?)`,
+        [
+          id,
+          "destinacao_setor",
+          depois.length > 0
+            ? `Destinado para: ${depois.join(", ")}${antes.length > 0 ? ` (antes: ${antes.join(", ")})` : ""}`
+            : `Removido dos setores ${antes.join(", ")} e devolvido ao quadro Geral`,
+          usuario || null,
+        ]
+      );
+    }
+
+    await connection.commit();
+
+    const [atualizada] = await pool.query(`${LIST_QUERY} WHERE ca.id = ?`, [id]);
+    res.json(comSetores(atualizada)[0]);
   } catch (err) {
     await connection.rollback();
     next(err);
@@ -515,6 +630,7 @@ router.delete("/:id", requireRole("admin", "rh"), async (req, res, next) => {
     // estrangeiras foram criadas com ON DELETE CASCADE.
     await connection.query("DELETE FROM rh_avaliacoes WHERE candidatura_id = ?", [id]);
     await connection.query("DELETE FROM rh_entrevistas WHERE candidatura_id = ?", [id]);
+    await connection.query("DELETE FROM rh_candidatura_setores WHERE candidatura_id = ?", [id]);
     await connection.query("DELETE FROM rh_historico WHERE candidatura_id = ?", [id]);
     await connection.query("DELETE FROM rh_candidaturas WHERE id = ?", [id]);
 
@@ -545,4 +661,4 @@ router.delete("/:id", requireRole("admin", "rh"), async (req, res, next) => {
   }
 });
 
-module.exports = { router, criarCandidatura, LIST_QUERY };
+module.exports = { router, criarCandidatura, LIST_QUERY, comSetores };

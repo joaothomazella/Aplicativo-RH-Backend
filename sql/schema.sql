@@ -90,3 +90,11 @@
 --   observacao MEDIUMTEXT
 --   usuario VARCHAR(150)
 --   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+-- rh_candidatura_setores  (ver sql/migration_011_candidatura_setores.sql)
+--   candidatura_id INT NOT NULL (FK -> rh_candidaturas.id, ON DELETE CASCADE)
+--   setor_id INT NOT NULL (FK -> rh_funcionarios_setores.id, ON DELETE CASCADE)
+--   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+--   PK (candidatura_id, setor_id)
+--   Uma candidatura pode estar em varios setores ao mesmo tempo. Sem nenhuma
+--   linha aqui, o card aparece no quadro Geral do Kanban.
