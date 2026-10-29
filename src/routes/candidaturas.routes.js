@@ -661,4 +661,4 @@ router.delete("/:id", requireRole("admin", "rh"), async (req, res, next) => {
   }
 });
 
-module.exports = { router, criarCandidatura, LIST_QUERY, comSetores };
+module.exports = { router, criarCandidatura, LIST_QUERY, comSetores, valorOuNulo };

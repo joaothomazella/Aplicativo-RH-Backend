@@ -1,6 +1,6 @@
 const express = require("express");
 const pool = require("../db/pool");
-const { criarCandidatura, LIST_QUERY, comSetores } = require("./candidaturas.routes");
+const { criarCandidatura, LIST_QUERY, comSetores, valorOuNulo } = require("./candidaturas.routes");
 const { requireRole } = require("../middleware/permissions.middleware");
 const { upload, curriculoUrlFromFile } = require("../middleware/upload");
 
@@ -139,7 +139,9 @@ router.patch("/:id", requireRole("admin", "rh"), upload.single("curriculo"), asy
         email,
         telefone,
         whatsapp,
-        data_nascimento,
+        // data_nascimento e DATE: o formulario manda string vazia quando o campo
+        // fica em branco, e o MySQL recusa "" como data.
+        valorOuNulo(data_nascimento),
         cpf,
         rg,
         cep,
