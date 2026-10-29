@@ -19,6 +19,33 @@ const AUDITORIA_ENTIDADES = {
   cargos: "funcionarios_cargo",
 };
 
+// Quem depende de cada lista. Um setor excluido sumiria dos cards do Kanban
+// (a FK de rh_candidatura_setores e ON DELETE CASCADE) e deixaria funcionarios
+// e vagas apontando para um nome que nao existe mais -- por isso a exclusao so
+// e liberada quando ninguem usa. Para tirar da lista um setor ja usado, o
+// caminho e desativar, que preserva o historico.
+const USOS = {
+  setores: [
+    { sql: "SELECT COUNT(*) AS total FROM rh_candidatura_setores WHERE setor_id = ?", por: "id", rotulo: "candidatura(s) no Kanban" },
+    { sql: "SELECT COUNT(*) AS total FROM rh_funcionarios WHERE setor = ?", por: "nome", rotulo: "funcionario(s)" },
+    { sql: "SELECT COUNT(*) AS total FROM rh_vagas WHERE setor = ?", por: "nome", rotulo: "vaga(s)" },
+  ],
+  cargos: [
+    { sql: "SELECT COUNT(*) AS total FROM rh_funcionarios WHERE cargo_atual = ?", por: "nome", rotulo: "funcionario(s)" },
+  ],
+};
+
+async function usosEmAberto(path, item) {
+  const checagens = USOS[path] || [];
+  const encontrados = [];
+  for (const checagem of checagens) {
+    const [linhas] = await pool.query(checagem.sql, [item[checagem.por]]);
+    const total = Number(linhas[0].total);
+    if (total > 0) encontrados.push(`${total} ${checagem.rotulo}`);
+  }
+  return encontrados;
+}
+
 function registerLookupRoutes(path, table) {
   const entidadeAuditoria = AUDITORIA_ENTIDADES[path];
   const checkDuplicates = Boolean(entidadeAuditoria);
@@ -101,6 +128,37 @@ function registerLookupRoutes(path, table) {
         });
       }
       res.json({ success: true, data: rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete(`/${path}/:itemId`, canManageFuncionarios, async (req, res, next) => {
+    try {
+      const [existingRows] = await pool.query(`SELECT * FROM ${table} WHERE id = ?`, [req.params.itemId]);
+      if (existingRows.length === 0) {
+        return res.status(404).json({ success: false, error: "Registro não encontrado." });
+      }
+      const existing = existingRows[0];
+      const usos = await usosEmAberto(path, existing);
+      if (usos.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `"${existing.nome}" está em uso por ${usos.join(", ")}. Desative em vez de excluir.`,
+        });
+      }
+      await pool.query(`DELETE FROM ${table} WHERE id = ?`, [req.params.itemId]);
+      if (entidadeAuditoria) {
+        await registrarAuditoria({
+          req,
+          entidade: entidadeAuditoria,
+          entidadeId: req.params.itemId,
+          acao: "excluir",
+          descricao: `Excluiu ${path === "setores" ? "setor" : "cargo"} "${existing.nome}"`,
+          dadosAntes: existing,
+        });
+      }
+      res.json({ success: true });
     } catch (err) {
       next(err);
     }
